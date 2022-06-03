@@ -162,12 +162,12 @@ int main(void) {
 //		TxHeader.TransmitGlobalTime = DISABLE;
 
 // Ready to Drive check (returns true if ready and false if not ready)
-	ready_to_drive = Ready_to_Drive();
-
-	if (ready_to_drive) {
-		HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);
-		//HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
-	}
+//	ready_to_drive = Ready_to_Drive();
+//
+//	if (ready_to_drive) {
+//		HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);
+//		//HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
+//	}
 
 	/* USER CODE END 2 */
 
@@ -600,6 +600,7 @@ static void APPS_Mapping(uint32_t *appsVal_0, uint32_t *appsVal_1,
 void start_Torque_Command(void const *argument) {
 	/* USER CODE BEGIN 5 */
 	uint32_t apps_PP[2]; //to store APPS Pedal Position Values (in %)
+	char msg[256];
 
 	//First need to send Drive Enable command in order to gain control over the motor controller
 	//Motor controller will timeout if it dosn't receive Drive Enable command or dosn't periodically receive Set Current command
@@ -628,9 +629,15 @@ void start_Torque_Command(void const *argument) {
 		}
 
 		else {
-			//			APPS_Failure = false;
-			//
-			//			APPS_Mapping(&appsVal[0], &appsVal[1], apps_PP);
+			APPS_Failure = false;
+
+			APPS_Mapping(&appsVal[0], &appsVal[1], apps_PP);
+
+			sprintf(msg,
+					"APPS_1 = %lu \t APPS_2 = %lu \t PP1 = %lu \t PP2 = %lu \r\n",
+					appsVal[0], appsVal[1], apps_PP[0], apps_PP[1]);
+			HAL_UART_Transmit(&huart2, (uint8_t*) msg, strlen(msg),
+			HAL_MAX_DELAY);
 			//
 			//			if (abs(apps_PP[0] - apps_PP[1]) <= 10) {
 			//				//reset the 100ms timer if started since there is no >10% implausibility
@@ -689,7 +696,7 @@ void start_Torque_Command(void const *argument) {
 			//			} //end else
 
 		} //end else
-		osDelay(1);
+		osDelay(50);
 	}
 	/* USER CODE END 5 */
 }
