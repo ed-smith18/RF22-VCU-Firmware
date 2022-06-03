@@ -60,6 +60,8 @@ DMA_HandleTypeDef hdma_adc3;
 
 CAN_HandleTypeDef hcan1;
 
+TIM_HandleTypeDef htim10;
+
 UART_HandleTypeDef huart2;
 
 osThreadId Torque_CommandHandle;
@@ -86,6 +88,7 @@ static void MX_ADC1_Init(void);
 static void MX_ADC2_Init(void);
 static void MX_ADC3_Init(void);
 static void MX_CAN1_Init(void);
+static void MX_TIM10_Init(void);
 void start_Torque_Command(void const *argument);
 void start_Brake_Sensor(void const *argument);
 
@@ -104,6 +107,14 @@ uint8_t TxData[8];
 uint8_t RxData[8];
 
 uint32_t TxMailbox;
+
+void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan) {
+
+	if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &RxHeader, RxData) != HAL_OK) {
+		Error_Handler();
+	}
+	//HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);
+}
 /* USER CODE END 0 */
 
 /**
@@ -139,35 +150,37 @@ int main(void) {
 	MX_ADC2_Init();
 	MX_ADC3_Init();
 	MX_CAN1_Init();
+	MX_TIM10_Init();
 	/* USER CODE BEGIN 2 */
 	HAL_ADC_Start_DMA(&hadc1, &appsVal[0], 1); //start the ADC for APPS 1 (Linear Sensor) in DMA mode
 	HAL_ADC_Start_DMA(&hadc3, &bpsVal[0], 1); //start the ADC for Brake Pressure Sensors in DMA mode
 	HAL_ADC_Start_DMA(&hadc2, &appsVal[1], 1); //start the ADC for APPS 2 (Rotational Sensor) in DMA mode
 
-//		//Start the CAN Bus
-//		HAL_CAN_Start(&hcan1);
-//
-//		//Initialize the CAN RX Interrupt
-//		if (HAL_CAN_ActivateNotification(&hcan1, CAN_IT_RX_FIFO0_MSG_PENDING)
-//				!= HAL_OK) {
-//			Error_Handler();
-//		}
-//
-//		//Setting Required Data Values for CAN frame
-//		TxHeader.DLC = 8;	//data length in bytes
-//		TxHeader.ExtId = 0;
-//		TxHeader.IDE = CAN_ID_STD; //specify standard CAN ID
-//		TxHeader.RTR = CAN_RTR_DATA; //specifies we are sending a CAN frame
-//		TxHeader.StdId = 0x21;	//CAN ID of this device
-//		TxHeader.TransmitGlobalTime = DISABLE;
+	//Start the CAN Bus
+	HAL_CAN_Start(&hcan1);
+
+	//NOT WORKING
+	//Initialize the CAN RX Interrupt
+//	if (HAL_CAN_ActivateNotification(&hcan1, CAN_IT_RX_FIFO0_MSG_PENDING)
+//			!= HAL_OK) {
+//		Error_Handler();
+//	}
+
+	//Setting Required Data Values for CAN frame
+	TxHeader.DLC = 8;	//data length in bytes
+	TxHeader.ExtId = 0;
+	TxHeader.IDE = CAN_ID_STD; //specify standard CAN ID
+	TxHeader.RTR = CAN_RTR_DATA; //specifies we are sending a CAN frame
+	TxHeader.StdId = 0x22;	//CAN ID of this device
+	TxHeader.TransmitGlobalTime = DISABLE;
 
 // Ready to Drive check (returns true if ready and false if not ready)
-//	ready_to_drive = Ready_to_Drive();
-//
-//	if (ready_to_drive) {
-//		HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);
-//		//HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
-//	}
+	ready_to_drive = Ready_to_Drive();
+
+	if (ready_to_drive) {
+		HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);
+		//HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
+	}
 
 	/* USER CODE END 2 */
 
@@ -426,15 +439,56 @@ static void MX_CAN1_Init(void) {
 	hcan1.Init.TimeTriggeredMode = DISABLE;
 	hcan1.Init.AutoBusOff = DISABLE;
 	hcan1.Init.AutoWakeUp = DISABLE;
-	hcan1.Init.AutoRetransmission = DISABLE;
+	hcan1.Init.AutoRetransmission = ENABLE;
 	hcan1.Init.ReceiveFifoLocked = DISABLE;
 	hcan1.Init.TransmitFifoPriority = DISABLE;
 	if (HAL_CAN_Init(&hcan1) != HAL_OK) {
 		Error_Handler();
 	}
 	/* USER CODE BEGIN CAN1_Init 2 */
+	CAN_FilterTypeDef canfilterconfig;
+	canfilterconfig.FilterActivation = CAN_FILTER_ENABLE;
+	canfilterconfig.FilterBank = 0;
+	canfilterconfig.FilterFIFOAssignment = CAN_RX_FIFO0;
+	canfilterconfig.FilterIdHigh = 0;
+	canfilterconfig.FilterIdLow = 0x0000;
+	canfilterconfig.FilterMaskIdHigh = 0;
+	canfilterconfig.FilterMaskIdLow = 0x0000;
+	canfilterconfig.FilterMode = CAN_FILTERMODE_IDMASK;
+	canfilterconfig.FilterScale = CAN_FILTERSCALE_32BIT;
+	canfilterconfig.SlaveStartFilterBank = 0; // how many filters to assign to the CAN1 (master can)
 
+	HAL_CAN_ConfigFilter(&hcan1, &canfilterconfig);
 	/* USER CODE END CAN1_Init 2 */
+
+}
+
+/**
+ * @brief TIM10 Initialization Function
+ * @param None
+ * @retval None
+ */
+static void MX_TIM10_Init(void) {
+
+	/* USER CODE BEGIN TIM10_Init 0 */
+
+	/* USER CODE END TIM10_Init 0 */
+
+	/* USER CODE BEGIN TIM10_Init 1 */
+
+	/* USER CODE END TIM10_Init 1 */
+	htim10.Instance = TIM10;
+	htim10.Init.Prescaler = 1800 - 1;
+	htim10.Init.CounterMode = TIM_COUNTERMODE_UP;
+	htim10.Init.Period = 65535;
+	htim10.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+	htim10.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+	if (HAL_TIM_Base_Init(&htim10) != HAL_OK) {
+		Error_Handler();
+	}
+	/* USER CODE BEGIN TIM10_Init 2 */
+
+	/* USER CODE END TIM10_Init 2 */
 
 }
 
@@ -537,26 +591,39 @@ static void MX_GPIO_Init(void) {
 	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
 	HAL_GPIO_Init(LD2_GPIO_Port, &GPIO_InitStruct);
 
+	/*Configure GPIO pin : HV_Present_Pin */
+	GPIO_InitStruct.Pin = HV_Present_Pin;
+	GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+	GPIO_InitStruct.Pull = GPIO_PULLUP;
+	HAL_GPIO_Init(HV_Present_GPIO_Port, &GPIO_InitStruct);
+
 }
 
 /* USER CODE BEGIN 4 */
 static bool Ready_to_Drive(void) {
 
 	for (;;) {
-		//checking if brakes are pressed & start button is pressed at the same time
+		//checking if brakes are pressed, start button is pressed and HV Present at the same time
 		if ((bpsVal[0] >= bpsThreshold)
-				&& (!HAL_GPIO_ReadPin(Start_Button_GPIO_Port, Start_Button_Pin))) {
-			//sound buzzer for minimum of 1 second and maximum of 3 seconds using timer
-			//HAL_GPIO_WritePin(Ready_to_Drive_Sound_GPIO_Port,
-			//Ready_to_Drive_Sound_Pin, GPIO_PIN_SET);
+				&& (!HAL_GPIO_ReadPin(Start_Button_GPIO_Port, Start_Button_Pin))
+				&& (!HAL_GPIO_ReadPin(HV_Present_GPIO_Port, HV_Present_Pin))) {
 
+			//sound buzzer for minimum of 1 second and maximum of 3 seconds using timer
+
+			//Method 1
 			HAL_GPIO_TogglePin(Ready_to_Drive_Sound_GPIO_Port,
 			Ready_to_Drive_Sound_Pin);
 			HAL_Delay(2000); //sound buzzer for 2 seconds
-//			HAL_GPIO_WritePin(Ready_to_Drive_Sound_GPIO_Port,
-//			Ready_to_Drive_Sound_Pin, GPIO_PIN_RESET);
 			HAL_GPIO_TogglePin(Ready_to_Drive_Sound_GPIO_Port,
 			Ready_to_Drive_Sound_Pin);
+
+			//Method 2
+			//HAL_GPIO_WritePin(Ready_to_Drive_Sound_GPIO_Port,
+			//Ready_to_Drive_Sound_Pin, GPIO_PIN_SET);
+			//HAL_Delay(2000); //sound buzzer for 2 seconds
+			//HAL_GPIO_WritePin(Ready_to_Drive_Sound_GPIO_Port,
+			//Ready_to_Drive_Sound_Pin, GPIO_PIN_RESET);
+
 			return true;
 		} //end if
 
@@ -605,16 +672,18 @@ void start_Torque_Command(void const *argument) {
 	//First need to send Drive Enable command in order to gain control over the motor controller
 	//Motor controller will timeout if it dosn't receive Drive Enable command or dosn't periodically receive Set Current command
 	//We can send the Drive Enable command once and then periodically send Set Current command to prevent it from timing out.
+
 	TxData[0] = 0x24; //Message ID for "Drive Enable" for motor controller
 	TxData[1] = 0x1F; //Node ID for Standard CAN message
 	TxData[2] = 1; // 1: TRUE enables drive, 0: FALSE disables drive
 
-	//	if (HAL_CAN_AddTxMessage(&hcan1, &TxHeader, TxData, &TxMailbox) != HAL_OK) {
-	//		Error_Handler();
-	//	}
+	if (HAL_CAN_AddTxMessage(&hcan1, &TxHeader, TxData, &TxMailbox) != HAL_OK) {
+		Error_Handler();
+	}
+
 	/* Infinite loop */
 	for (;;) {
-		HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
+		//HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
 
 		if ((appsVal[0] < APPS_0_MIN) || (appsVal[0] > APPS_0_MAX)) {
 			//shutdown power to motor
@@ -638,62 +707,58 @@ void start_Torque_Command(void const *argument) {
 					appsVal[0], appsVal[1], apps_PP[0], apps_PP[1]);
 			HAL_UART_Transmit(&huart2, (uint8_t*) msg, strlen(msg),
 			HAL_MAX_DELAY);
-			//
-			//			if (abs(apps_PP[0] - apps_PP[1]) <= 10) {
-			//				//reset the 100ms timer if started since there is no >10% implausibility
-			//				HAL_TIM_Base_Stop(&htim10);
-			//				timer_100ms = 0;
-			//				implausibility = false;
-			//				//osTimerStop(implausibility_TimerHandle);
-			//
-			//				//Broadcast messages sent to motor controller to control motor torque
-			//				TxData[0] = 0x1A; //Message ID for "Set AC Current" for motor controller
-			//				TxData[1] = 0x1F; //Node ID for Standard CAN message
-			//				TxData[2] = 10 * apps_PP[0]; //Will take the linear sensor as the primary sensor for sending signals to motor controller. (Needs to be scaled by 10 first)
-			//
-			//				if (!APPS_Failure) {
-			//					//Send out CAN message
-			////			if (HAL_CAN_AddTxMessage(&hcan1, &TxHeader, TxData, &TxMailbox)
-			////					!= HAL_OK) {
-			////				Error_Handler();
-			////			} //end if
-			//
-			//				} //end if
-			//
-			//				/**
-			//				 * Need to send CAN messages before motor controller times out
-			//				 * Recommended settings are to send out CAN message every half the timeout
-			//				 * period. I.e if timeout period is 1000ms, then send a CAN message every 500ms.
-			//				 * Need to configure actual timeout period for motor controller using DTI tool.
-			//				 * We will set it to 50ms for now.
-			//				 */
-			//
-			//			} //end if
-			//
-			//			else {
-			//				//HAL_GPIO_TogglePin(GPIOD, LD6_Pin);
-			//				//osDelay(25);
-			//				//HAL_GPIO_TogglePin(GPIOD, LD6_Pin);
-			//				//osTimerStart(implausibility_TimerHandle, 100);
-			//				//Should only get here if there is a >10% difference between APPS
-			//
-			//				// check to see if timer has run for >100ms then send CAN message to set motor torque to zero
-			//				if (implausibility) {
-			//					if (__HAL_TIM_GET_COUNTER(&htim10) - timer_100ms >= 10000) {
-			//						//shutdown power to motor
-			//					} else {
-			//						continue; //go back to beginning of loop (not sure if needed)
-			//					}
-			//				} //end if
-			//				else {
-			//					//start 100ms timer if not started
-			//					HAL_TIM_Base_Start(&htim10);
-			//					timer_100ms = __HAL_TIM_GET_COUNTER(&htim10);
-			//					implausibility = true;
-			//
-			//				} //end else
-			//
-			//			} //end else
+
+			if (abs(apps_PP[0] - apps_PP[1]) <= 10) {
+				//reset the 100ms timer if started since there is no >10% implausibility
+				HAL_TIM_Base_Stop(&htim10);
+				timer_100ms = 0;
+				implausibility = false;
+				//osTimerStop(implausibility_TimerHandle);
+
+				//Broadcast messages sent to motor controller to control motor torque
+				TxData[0] = 0x1A; //Message ID for "Set AC Current" for motor controller
+				TxData[1] = 0x1F; //Node ID for Standard CAN message
+				TxData[2] = 10 * apps_PP[0]; //Will take the linear sensor as the primary sensor for sending signals to motor controller. (Needs to be scaled by 10 first)
+
+				if (!APPS_Failure) {
+					//Send out CAN message
+					if (HAL_CAN_AddTxMessage(&hcan1, &TxHeader, TxData,
+							&TxMailbox) != HAL_OK) {
+						Error_Handler();
+					} //end if
+
+				} //end if
+
+				/**
+				 * Need to send CAN messages before motor controller times out
+				 * Recommended settings are to send out CAN message every half the timeout
+				 * period. I.e if timeout period is 1000ms, then send a CAN message every 500ms.
+				 * Need to configure actual timeout period for motor controller using DTI tool.
+				 * We will set it to 50ms for now.
+				 */
+
+			} //end if
+
+			else {
+				//Should only get here if there is a >10% difference between APPS
+
+				// check to see if timer has run for >100ms then send CAN message to set motor torque to zero
+				if (implausibility) {
+					if (__HAL_TIM_GET_COUNTER(&htim10) - timer_100ms >= 10000) {
+						//shutdown power to motor
+					} else {
+						continue; //go back to beginning of loop (not sure if needed)
+					}
+				} //end if
+				else {
+					//start 100ms timer if not started
+					HAL_TIM_Base_Start(&htim10);
+					timer_100ms = __HAL_TIM_GET_COUNTER(&htim10);
+					implausibility = true;
+
+				} //end else
+
+			} //end else
 
 		} //end else
 		osDelay(50);
